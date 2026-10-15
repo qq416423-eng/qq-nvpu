@@ -1,0 +1,27 @@
+name: connectivity-test
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          pip install -q requests
+          python3 -c "
+          import requests, time
+          for name, url, key in [
+              ('intern-ai (书生)', 'https://discovery-api.intern-ai.org.cn/v1/chat/completions', '$INTERN_KEY'),
+              ('zhipu (智谱)', 'https://open.bigmodel.cn/api/paas/v4/chat/completions', '$ZHIPU_KEY'),
+          ]:
+              t0 = time.time()
+              try:
+                  r = requests.post(url, headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+                      json={'model':'deepseek-v4-flash-0731' if 'intern' in name else 'glm-4.7-flash',
+                            'messages':[{'role':'user','content':'hi'}],'max_tokens':5,'thinking':{'type':'disabled'}}, timeout=30)
+                  print(f'{name}: HTTP {r.status_code}, {int((time.time()-t0)*1000)}ms')
+              except Exception as e:
+                  print(f'{name}: FAILED {type(e).__name__}: {str(e)[:120]} ({int((time.time()-t0)*1000)}ms)')
+          "
+        env:
+          INTERN_KEY: ${{ secrets.INTERN_KEY }}
+          ZHIPU_KEY: ${{ secrets.ZHIPU_KEY }}
