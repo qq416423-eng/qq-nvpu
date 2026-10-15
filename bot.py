@@ -36,7 +36,7 @@ class Health(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"群女仆 is running")
+        self.wfile.write("群女仆 is running".encode())
     def log_message(self, *a):
         pass
 
