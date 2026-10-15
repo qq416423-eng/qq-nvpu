@@ -1,24 +1,30 @@
-import os
+import os, time, requests
 from huggingface_hub import HfApi
 
 api = HfApi(token=os.environ["HF_TOKEN"])
 user = api.whoami()["name"]
 repo_id = f"{user}/qq-nvpu"
-print("HF user:", user, "| space:", repo_id)
-api.create_repo(repo_id=repo_id, repo_type="space", space_sdk="docker", private=False, exist_ok=True)
-print("space created")
-api.upload_file(path_or_fileobj="bot_hf.py", path_in_repo="bot_hf.py", repo_id=repo_id, repo_type="space")
-api.upload_file(path_or_fileobj="Dockerfile", path_in_repo="Dockerfile", repo_id=repo_id, repo_type="space")
-print("files uploaded")
-for k in ["QQ_APPID", "QQ_SECRET", "INTERN_KEY", "ZHIPU_KEY"]:
-    api.add_space_secret(repo_id=repo_id, key=k, value=os.environ[k])
-    print("secret set:", k)
+print("HF user:", user)
 try:
-    api.request_space_hardware(repo_id=repo_id, hardware="cpu-basic", repo_type="space")
+    api.restart_space(repo_id=repo_id)
+    print("space restart requested")
 except Exception as e:
-    print("hw (may be ok to ignore):", e)
+    print("restart err:", e)
+stage = None
+for i in range(18):
+    try:
+        d = requests.get(f"https://huggingface.co/api/spaces/{repo_id}", timeout=15).json()
+        stage = (d.get("runtime") or {}).get("stage")
+        print("stage:", stage)
+    except Exception as e:
+        print("poll err:", e)
+    if stage == "RUNNING":
+        break
+    time.sleep(10)
+print("FINAL:", stage)
 try:
-    api.restart_space(repo_id=repo_id, repo_type="space")
+    logs = requests.get(f"https://huggingface.co/api/spaces/{repo_id}/logs/run", timeout=15).text
+    print("--- run logs ---")
+    print(logs[-1500:])
 except Exception as e:
-    print("restart (may be ok to ignore):", e)
-print("DEPLOY DONE")
+    print("logs err:", e)
