@@ -1,0 +1,18 @@
+name: Deploy to HF Space
+on: workflow_dispatch
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -q huggingface_hub
+      - run: python .github/deploy.py
+        env:
+          HF_TOKEN: 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
+          QQ_APPID: "1905356937"
+          QQ_SECRET: "OYju6JWkyDSiyFWo6Pi2Mh2Ok7UsGf4U"
+          INTERN_KEY: "sk-45b453a9df23730362e7a863e767eea7d96dff69da4dd05a94c54ba9e36ce9a9"
+          ZHIPU_KEY: "80df1d4c506f468e88417060729bdb74.2eGxl91pLbS4rC8D"
