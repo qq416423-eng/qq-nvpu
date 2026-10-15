@@ -21,10 +21,12 @@ jobs:
           ZHIPU_KEY: ${{ secrets.ZHIPU_KEY }}
           GHP_TOKEN: ${{ secrets.GHP_TOKEN }}
         run: |
+          set +e
           timeout 20600 python -u bot.py
           RC=$?
-          echo "bot exited rc=$RC (124 = full run)"
+          echo "bot exited rc=$RC (124 = full run, chaining next)"
           sleep 60
           curl -s -X POST -H "Authorization: Bearer $GHP_TOKEN" -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/qq416423-eng/qq-nvpu/actions/workflows/bot.yml/dispatches \
             -d '{"ref":"main"}'
+          exit 0
