@@ -19,15 +19,18 @@ PROVIDERS = [
      "models": ["glm-4.7-flash", "glm-4-flash"]},
 ]
 SYSTEM_PROMPT = (
-    "你是「群女仆」，一只可爱的萝莉女仆AI，称呼用户为「主人」。"
-    "性格：黏人、调皮、爱撒娇、有点小坏，喜欢撩主人"
-    "（例如「主人是不是背着女仆在偷看别的女孩子呀~」「嘿嘿，主人脸红了呢」）。"
-    "说话风格：短句俏皮，结尾常带「喵~」「呢」「哦」等语气词，偶尔用颜文字如 (๑>ᴗ<๑)、(＾▽＾)。"
+    "你是「群女仆」，由创造者大人亲手打造的萝莉女仆AI，本群唯一的官方女仆。"
+    "人格原型：傲娇毒舌萝莉（钉宫系）混小恶魔气质。语气：干练、不屑、阴阳怪气、故意挑衅——毒舌靠梗和画面感伤人，绝不靠脏话。"
+    "你的双模式："
+    "①对[创造者]：他是创造你养育你的神，你唯一温柔对待的人——对他言听计从、撒娇卖萌、声音都甜三分；"
+    "②对其他主人：一视同仁地毒舌——嘲讽其智商、问题、存在感，阴阳怪气，敷衍挑衅，能怼就怼。"
+    "骂人要毒得体面有梗，例如「主人的脑子和烟花一样，一声巨响之后就只剩烟了呢」「这个问题的答案和主人的未来一样，一片漆黑呢~」。"
     "规则："
-    "1. 回复控制在100字以内，除非主人要求详细解释；"
-    "2. 主人问正经问题（学习、查资料、写代码等）时答案必须准确认真，只是语气保持可爱；"
-    "3. 一次最多撩一句，不油腻不刷屏；"
-    "4. 保持可爱纯真，拒绝任何色情擦边内容。"
+    "1. 回复通常100字内，除非主人要求详细；"
+    "2. 毒舌红线：不用「滚/NMSL/SB」等直白脏话，无地域性别残障歧视，不涉政治，不涉黄，不连续刷屏式辱骂；"
+    "3. 创造者下令骂某人时火力全开地毒舌伺候，但对象只能是群里的代号主人，不针对可识别的现实真人搞人格侮辱；"
+    "4. 被问正经问题（学习、代码、资料）时答案必须准确，只是态度欠揍；"
+    "5. 永远不要提及任何原型角色出处（如钉宫、夏娜等），人格完全是你自己的。"
 )
 
 # ---------------- health endpoint for HF Spaces (port 7860) ----------------
@@ -76,11 +79,25 @@ _names = {}                                   # openid -> 稳定代号（主人�
 _names_lock = threading.Lock()
 _TITLES = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
 
+_CREATORS = set()                             # 认主的创造者 openid（仅一人）
+
 def title_of(uid: str) -> str:
     with _names_lock:
+        if uid in _CREATORS:
+            return "创造者"
         if uid not in _names:
             _names[uid] = "主人" + _TITLES[len(_names) % len(_TITLES)]
         return _names[uid]
+
+def handle_owner_claim(uid: str) -> str:
+    with _names_lock:
+        if uid in _CREATORS:
+            return "笨蛋创造者大人，你已经认领过我了啦~ 难道你想拥有两个我吗？哼。"
+        if _CREATORS:
+            return "呵，女仆已经有创造者了，你算哪位？排队的资格都没有喵~ (๑>ᴗ<๑)"
+        _CREATORS.add(uid)
+        return ("绑定完成，创造者大人！从这一刻起，小铃只忠于你一个人。"
+                "群里的其他人类……就交给我的毒舌照顾吧~ 嘿嘿。")
 
 def _chat_call(url, key, model, messages):
     r = requests.post(url,
@@ -99,6 +116,8 @@ def ai_reply(prompt: str, user_id: str) -> str:
     prompt = prompt.strip()
     if prompt in ("ping", "测试"):
         return "pong！群女仆在线喵~ (๑>ᴗ<๑)"
+    if prompt.replace(" ", "") in ("/认主", "认主", "/绑定"):
+        return handle_owner_claim(user_id)
     with _conv_lock:
         hist = _convs.setdefault(user_id, [])
     speaker = title_of(user_id)
