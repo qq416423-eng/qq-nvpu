@@ -72,6 +72,15 @@ def api_headers():
 # ---------------- AI ----------------
 _convs = {}
 _conv_lock = threading.Lock()
+_names = {}                                   # openid -> 稳定代号（主人甲/乙/丙...）
+_names_lock = threading.Lock()
+_TITLES = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
+
+def title_of(uid: str) -> str:
+    with _names_lock:
+        if uid not in _names:
+            _names[uid] = "主人" + _TITLES[len(_names) % len(_TITLES)]
+        return _names[uid]
 
 def _chat_call(url, key, model, messages):
     r = requests.post(url,
@@ -92,10 +101,14 @@ def ai_reply(prompt: str, user_id: str) -> str:
         return "pong！群女仆在线喵~ (๑>ᴗ<๑)"
     with _conv_lock:
         hist = _convs.setdefault(user_id, [])
-    hist.append({"role": "user", "content": prompt})
+    speaker = title_of(user_id)
+    hist.append({"role": "user", "content": f"[{speaker}]：{prompt}"})
     if len(hist) > 6:
         del hist[:-6]
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] + hist
+    messages = [{"role": "system", "content": SYSTEM_PROMPT +
+                 "（注意：这是群聊，有多位不同的主人会先后和你说话，"
+                 "每条消息前的[主人X]就是当前发言者的代号，请区分对待，"
+                 "不要把不同主人的事记混；对方没自我介绍时可以问称呼。）"}] + hist
     text = None
     for p in PROVIDERS:
         if not p["key"]:
@@ -143,17 +156,20 @@ def handle_event(t: str, d: dict):
         if t == "GROUP_AT_MESSAGE_CREATE":
             content = d.get("content", "").strip()
             group = d.get("group_openid", "")
+            author = d.get("author", {}) or {}
+            uid = author.get("id") or author.get("union_openid") or group + ":anon"
             mid = d.get("id", "")
-            print(f"[recv-group] {content!r}")
-            reply = ai_reply(content, d.get("author", {}).get("id", ""))
+            print(f"[recv-group] uid={uid[:12]} {content!r}")
+            reply = ai_reply(content, uid)
             send_group(group, reply[:900], mid)
         elif t == "C2C_MESSAGE_CREATE":
             content = d.get("content", "").strip()
-            user = d.get("user_openid") or d.get("author", {}).get("user_openid", "")
+            author = d.get("author", {}) or {}
+            uid = d.get("user_openid") or author.get("user_openid") or author.get("id") or "c2c:anon"
             mid = d.get("id", "")
-            print(f"[recv-c2c] {content!r}")
-            reply = ai_reply(content, d.get("author", {}).get("id", ""))
-            send_c2c(user, reply[:900], mid)
+            print(f"[recv-c2c] uid={uid[:12]} {content!r}")
+            reply = ai_reply(content, uid)
+            send_c2c(uid, reply[:900], mid)
         else:
             print("[event]", t)
     except Exception as e:
