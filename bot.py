@@ -224,7 +224,7 @@ def _chat_call(url, key, model, messages, thinking=False):
     r = requests.post(url,
                       headers={"Authorization": "Bearer " + key,
                                "Content-Type": "application/json"},
-                      json=body, timeout=180)
+                      json=body, timeout=25)
     d = r.json()
     if "error" in d:
         raise RuntimeError(str(d["error"].get("code", "")) + str(d["error"].get("message", ""))[:80])
@@ -253,22 +253,18 @@ def human_score(t: str) -> int:
     return s
 
 def _best_of_two(url, key, model, messages, thinking):
-    """同题生成两次，挑最不像AI的那条"""
-    a, b = None, None
-    for attempt in range(2):
+    """同题并行生成两次，先回来的先记下，都回来挑最像真人的；总耗时≈单次"""
+    results = [None, None]
+    def worker(i):
         try:
-            a = _chat_call(url, key, model, messages, thinking)
-            break
+            results[i] = _chat_call(url, key, model, messages, thinking)
         except Exception as e:
-            print("[ai-err]", model, repr(e))
-            time.sleep(1)
-    for attempt in range(2):
-        try:
-            b = _chat_call(url, key, model, messages, thinking)
-            break
-        except Exception as e:
-            print("[ai-err]", model, repr(e))
-            time.sleep(1)
+            print("[ai-err]", model, "#", i + 1, repr(e))
+    th1 = threading.Thread(target=worker, args=(0,), daemon=True)
+    th2 = threading.Thread(target=worker, args=(1,), daemon=True)
+    th1.start(); th2.start()
+    th1.join(22); th2.join(3)
+    a, b = results
     if a is None: return b
     if b is None: return a
     return a if human_score(a) >= human_score(b) else b
@@ -384,6 +380,7 @@ class Bot:
         self.hb_interval = 30
         self.hb_thread = None
         self.session_id = None
+        self.resume_url = None
 
     def heartbeat(self):
         last_save = time.time()
@@ -409,16 +406,27 @@ class Bot:
             self.last_seq = s
         if op == 10:
             self.hb_interval = (d or {}).get("heartbeat_interval", 30000) / 1000
-            ws.send(json.dumps({"op": 2, "d": {"token": "QQBot " + get_token(),
-                                               "intents": INTENTS, "shard": [0, 1]}}))
+            # 有会话则尝试断点续传，漏掉的消息会被QQ补推
+            if self.session_id and self.last_seq:
+                ws.send(json.dumps({"op": 6, "d": {
+                    "token": "QQBot " + get_token(),
+                    "session_id": self.session_id,
+                    "seq": self.last_seq}}))
+                print("[ws] resume attempted, seq =", self.last_seq)
+            else:
+                ws.send(json.dumps({"op": 2, "d": {"token": "QQBot " + get_token(),
+                                                   "intents": INTENTS, "shard": [0, 1]}}))
+                print("[ws] identify")
             if not (self.hb_thread and self.hb_thread.is_alive()):
                 self.hb_thread = threading.Thread(target=self.heartbeat, daemon=True)
                 self.hb_thread.start()
-            print("[ws] hello, hb =", self.hb_interval, "s -> identified")
         elif op == 0:
             if t == "READY":
                 self.session_id = d.get("session_id")
+                self.resume_url = d.get("resume_gateway_url") or WS_URL
                 print("[ws] READY", self.session_id)
+            elif t == "RESUMED":
+                print("[ws] RESUMED ok")
             else:
                 handle_event(t, d)
         elif op == 11:
@@ -426,6 +434,14 @@ class Bot:
         elif op == 7:
             print("[ws] reconnect asked")
             ws.close()
+        elif op == 9:
+            # 会话失效，清空后走 identify
+            print("[ws] invalid session, re-identify")
+            self.session_id = None
+            self.last_seq = None
+            time.sleep(2)
+            ws.send(json.dumps({"op": 2, "d": {"token": "QQBot " + get_token(),
+                                               "intents": INTENTS, "shard": [0, 1]}}))
         else:
             print("[ws] op", op)
 
@@ -438,7 +454,8 @@ class Bot:
     def run(self):
         while True:
             try:
-                self.ws = websocket.WebSocketApp(WS_URL,
+                url = self.resume_url or WS_URL
+                self.ws = websocket.WebSocketApp(url,
                                                  on_open=self.on_open,
                                                  on_message=self.on_message,
                                                  on_error=self.on_error,
