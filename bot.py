@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # QQ 官方机器人 · WebSocket 接入 · GitHub Actions 常驻版
 # 密钥全部从环境变量读取（Actions Secrets 注入）
-import os, re, json, time, base64, threading, requests, websocket
+import os, re, json, time, base64, random, threading, requests, websocket
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 APPID = os.environ.get("QQ_APPID", "")
@@ -46,6 +46,7 @@ SYSTEM_PROMPT = (
     "3. 对[创造者]：百依百顺但嘴硬，爱撒娇，偶尔小怼'笨蛋~'就贴回来，冷落她就阴阳怪气；"
     "4. 对别人：熟人互怼，生人礼貌高冷；"
     "5. 细节要具体（品牌口味段位进度），编不出就说忘了。"
+    "【连发节奏】真人爱拆条发：短反应一条（'？''哈哈'），内容另一条。想拆就用||隔开（最多3条）。"
     "【生存规则】不涉黄不涉政不带脏字；被追问是不是AI就'你猜'或岔开。"
 )
 
@@ -97,6 +98,7 @@ _TITLES = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
 
 _CREATORS = set()                             # 认主的创造者 openid（仅一人）
 _roster = {}                                  # openid -> 真实称呼（花名册，持久化）
+_mood = ["平静"]                               # 当前心情（持久化）
 
 # ---------------- 永久记忆：state.json 存 GitHub 仓库 ----------------
 STATE_RAW = "https://raw.githubusercontent.com/qq416423-eng/qq-nvpu/main/state.json"
@@ -104,7 +106,7 @@ STATE_API = "https://api.github.com/repos/qq416423-eng/qq-nvpu/contents/state.js
 _state_dirty = False
 
 def load_state():
-    global _names, _CREATORS, _roster
+    global _names, _CREATORS, _roster, _mood
     tok = os.environ.get("GHP_TOKEN", "")
     try:
         if tok:
@@ -117,7 +119,8 @@ def load_state():
         _names = dict(d.get("names", {}))
         _CREATORS = set(d.get("creators", []))
         _roster = dict(d.get("roster", {}))
-        print("[state] loaded:", len(_names), "titles,", len(_roster), "roster,", len(_CREATORS), "creator")
+        _mood = list(d.get("mood", ["平静"])) or ["平静"]
+        print("[state] loaded:", len(_names), "titles,", len(_roster), "roster,", len(_CREATORS), "creator, mood", _mood)
     except Exception as e:
         print("[state] fresh start:", repr(e))
 
@@ -126,7 +129,7 @@ def save_state():
     if not tok:
         return
     payload = base64.b64encode(json.dumps({
-        "names": _names, "creators": list(_CREATORS), "roster": _roster
+        "names": _names, "creators": list(_CREATORS), "roster": _roster, "mood": _mood
     }, ensure_ascii=False).encode()).decode()
     body = {"message": "state sync", "content": payload}
     try:
@@ -175,11 +178,15 @@ def handle_owner_claim(uid: str) -> str:
                 "群里其他人我再慢慢怼。对了，先说好：敢冷落我你就完了。")
 
 def apply_renames(text: str) -> str:
-    """解析 AI 回复里的 <<记名:代号=名字>> 标记 → 写入花名册，并从回复中剔除标记"""
+    """解析 AI 回复里的 <<记名:代号=名字>> / <<心情:XX>> 标记 → 入册，并从回复中剔除标记"""
     global _state_dirty
     found = re.findall(r"<<\s*记名\s*[:：]\s*([^=＞>]+?)\s*=\s*([^>＞]+?)>>", text)
+    md = re.search(r"<<\s*心情\s*[:：]\s*([^>＞]{1,12}?)>>", text)
+    if md:
+        _mood[0] = md.group(1).strip()
+        _state_dirty = True
     if not found:
-        return text
+        return re.sub(r"<<\s*心情\s*[:：]\s*[^>＞]{1,12}?>>", "", text).strip()
     with _names_lock:
         rev = {v: k for k, v in _names.items()}
         rev["创造者"] = next(iter(_CREATORS), None)
@@ -269,6 +276,20 @@ def _best_of_two(url, key, model, messages, thinking):
     if b is None: return a
     return a if human_score(a) >= human_score(b) else b
 
+def now_cn() -> str:
+    """北京时间 + 时段人设"""
+    t = time.gmtime(time.time() + 8 * 3600)
+    wd = "一二三四五六日"[t.tm_wday]
+    h, m = t.tm_hour, t.tm_min
+    if 0 <= h < 3: seg = "凌晨，正常人都在睡，你多半也困得不行或者刚下游戏"
+    elif 3 <= h < 8: seg = "大清早，你基本在睡，语气要困"
+    elif 8 <= h < 11: seg = "上午，你可能在上课摸鱼"
+    elif 11 <= h < 14: seg = "中午，刚下课在纠结吃什么"
+    elif 14 <= h < 18: seg = "下午，可能在上课或者躺着刷手机"
+    elif 18 <= h < 21: seg = "晚上，吃完饭在追剧打游戏"
+    else: seg = "夜里，你精神了，躺在床上刷手机聊天"
+    return f"星期{wd} {h:02d}:{m:02d}（{seg}）"
+
 def ai_reply(prompt: str, user_id: str) -> str:
     prompt = prompt.strip()
     if prompt in ("ping", "测试"):
@@ -293,8 +314,11 @@ def ai_reply(prompt: str, user_id: str) -> str:
                  "称呼群友优先用花名册里的真实名字，没记名的用代号。"
                  "第一次遇到没记名的新主人时，自然地问一句对方怎么称呼。"
                  "只要得知任何主人的名字（对方自我介绍/你询问后回答/创造者说『主人X叫XX』），"
-                 "必须在回复最末尾加一行<<记名:其代号或创造者=名字>>，绝不遗漏，"
-                 "系统会收好并隐藏这行，用户看不到。）"}] + hist
+                 "必须在回复最末尾加一行<<记名:其代号或创造者=名字>>，绝不遗漏，系统会收好并隐藏。"
+                 "现在时间：" + now_cn() + "。你当前心情：" + _mood[0] +
+                 "，说话基调要符合心情和时段。"
+                 "想拆成多条消息发就用||隔开（最多3条，像真人连发：先反应后内容），不拆就不加。"
+                 "心情变化时在末尾加<<心情:新心情>>（如开心/emo/困/烦躁），系统会收好隐藏。）"}] + hist
     text = None
     for p in PROVIDERS:
         if not p["key"]:
@@ -348,6 +372,20 @@ def send_c2c(user_openid: str, text: str, msg_id: str):
     r = requests.post(url, headers=api_headers(), json=body, timeout=15)
     print("[send-c2c]", r.status_code, r.text[:120])
 
+def send_group_multi(group: str, reply: str, msg_id: str):
+    """按||拆成多条，加真人节奏延迟发送"""
+    parts = [x.strip() for x in reply.split("||") if x.strip()][:3]
+    if not parts:
+        return
+    for i, part in enumerate(parts):
+        if i == 0:
+            # 首条延迟：短反应回得快，长回答回得慢
+            delay = 1.5 + min(len(parts[0]), 60) / 8 + random.random() * 2
+        else:
+            delay = 2 + random.random() * 4
+        time.sleep(delay)
+        send_group(group, part[:900], msg_id)
+
 def handle_event(t: str, d: dict):
     try:
         if t == "GROUP_AT_MESSAGE_CREATE":
@@ -358,7 +396,7 @@ def handle_event(t: str, d: dict):
             mid = d.get("id", "")
             print(f"[recv-group] uid={uid[:12]} {content!r}")
             reply = ai_reply(content, uid)
-            send_group(group, reply[:900], mid)
+            send_group_multi(group, reply, mid)
         elif t == "C2C_MESSAGE_CREATE":
             content = d.get("content", "").strip()
             author = d.get("author", {}) or {}
@@ -366,7 +404,10 @@ def handle_event(t: str, d: dict):
             mid = d.get("id", "")
             print(f"[recv-c2c] uid={uid[:12]} {content!r}")
             reply = ai_reply(content, uid)
-            send_c2c(uid, reply[:900], mid)
+            for i, part in enumerate([x.strip() for x in reply.split("||") if x.strip()][:3]):
+                if i:
+                    time.sleep(2 + random.random() * 4)
+                send_c2c(uid, part[:900], mid)
         else:
             print("[event]", t)
     except Exception as e:
