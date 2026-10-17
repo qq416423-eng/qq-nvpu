@@ -175,6 +175,31 @@ def apply_renames(text: str) -> str:
                 _state_dirty = True
     return re.sub(r"<<\s*记名\s*[:：]\s*[^=＞>]+?\s*=\s*[^>＞]+?>>", "", text).strip()
 
+def manual_renames(arg: str) -> str:
+    """创造者硬指令：/记名 主人乙=小刚 或 /记名 创造者=老板（可多条，空格分隔）"""
+    global _state_dirty
+    pairs = re.findall(r"([\u4e00-\u9fa5a-zA-Z0-9]+?)\s*[=:：]\s*([\u4e00-\u9fa5a-zA-Z0-9_]{1,16})", arg)
+    if not pairs:
+        return "格式：/记名 主人乙=小刚（多条用空格隔开）喵。"
+    ok, bad = [], []
+    with _names_lock:
+        rev = {v: k for k, v in _names.items()}
+        rev["创造者"] = next(iter(_CREATORS), None)
+        for title, name in pairs:
+            uid = rev.get(title)
+            if uid and name:
+                _roster[uid] = name
+                _state_dirty = True
+                ok.append(title + "→" + name)
+            else:
+                bad.append(title)
+    msg = ""
+    if ok:
+        msg += "记好了：" + "、".join(ok) + "。"
+    if bad:
+        msg += "没找到这个代号：" + "、".join(bad) + "，看看花名册再教我一次喵~"
+    return msg
+
 def _chat_call(url, key, model, messages):
     r = requests.post(url,
                       headers={"Authorization": "Bearer " + key,
@@ -194,6 +219,12 @@ def ai_reply(prompt: str, user_id: str) -> str:
         return "pong！群女仆在线喵~ (๑>ᴗ<๑)"
     if prompt.replace(" ", "") in ("/认主", "认主", "/绑定"):
         return handle_owner_claim(user_id)
+    if prompt.startswith("/记名"):
+        if user_id in _CREATORS:
+            return manual_renames(prompt[3:].strip())
+        return "呵，教我认人这种事只有创造者大人有资格做喵~"
+    if prompt.replace(" ", "") in ("/花名册", "花名册"):
+        return "本女仆的小本本：" + roster_line()
     with _conv_lock:
         hist = _convs.setdefault(user_id, [])
     speaker = title_of(user_id)
