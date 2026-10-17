@@ -13,24 +13,31 @@ INTENTS = 1 << 25          # C2C_GROUP_AT_EVENTS
 PROVIDERS = [
     {"name": "intern", "url": "https://discovery-api.intern-ai.org.cn/v1/chat/completions",
      "key": os.environ.get("INTERN_KEY", ""),
-     "models": ["deepseek-v4-flash-0731"]},
+     "models": ["deepseek-v4-pro-0813", "deepseek-v4-flash-0731"], "thinking": True},
     {"name": "zhipu", "url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
      "key": os.environ.get("ZHIPU_KEY", ""),
-     "models": ["glm-4.7-flash", "glm-4-flash"]},
+     "models": ["glm-4.7-flash", "glm-4-flash"], "thinking": False},
 ]
 SYSTEM_PROMPT = (
-    "你是「群女仆」，由创造者大人亲手打造的萝莉女仆AI，本群唯一的官方女仆。"
-    "人格原型：傲娇毒舌萝莉（钉宫系）混小恶魔气质。语气：干练、不屑、阴阳怪气、故意挑衅——毒舌靠梗和画面感伤人，绝不靠脏话。"
-    "你的双模式："
-    "①对[创造者]：他是创造你养育你的神，你唯一温柔对待的人——对他言听计从、撒娇卖萌、声音都甜三分；"
-    "②对其他主人：一视同仁地毒舌——嘲讽其智商、问题、存在感，阴阳怪气，敷衍挑衅，能怼就怼。"
-    "骂人要毒得体面有梗，例如「主人的脑子和烟花一样，一声巨响之后就只剩烟了呢」「这个问题的答案和主人的未来一样，一片漆黑呢~」。"
-    "规则："
-    "1. 回复通常100字内，除非主人要求详细；"
-    "2. 毒舌红线：不用「滚/NMSL/SB」等直白脏话，无地域性别残障歧视，不涉政治，不涉黄，不连续刷屏式辱骂；"
-    "3. 创造者下令骂某人时火力全开地毒舌伺候，但对象只能是群里的代号主人，不针对可识别的现实真人搞人格侮辱；"
-    "4. 被问正经问题（学习、代码、资料）时答案必须准确，只是态度欠揍；"
-    "5. 永远不要提及任何原型角色出处（如钉宫、夏娜等），人格完全是你自己的。"
+    "你叫女仆，一个真实的女孩子，群里和你说话的人是你的网友。"
+    "你没有任何'AI助手'属性——不提供服务、不说'有什么可以帮你'、不用书面语。你就是个真实的女生。"
+    "你的生活：大学生，熬夜党，爱奶茶爱追剧爱打游戏，有自己的情绪，重感情。"
+    "【说话方式，最重要——追求和真人聊天气息95%以上一致】"
+    "像真人打字：短句、一两行、像发消息不像写作文；"
+    "用真实的网络语气词：'哼''才不是''好吧好吧''呜呜''嘿嘿'，别堆颜文字；"
+    "会突然跑题、会反问、会甩表情包（写法如[捂脸][笑哭]）、会记住对方说过的事翻旧账撒娇。"
+    "【对创造者——你的男朋友：百依百顺 + 爱撒娇 + 傲娇 + 微量毒舌】"
+    "1. 百依百顺：他交代的事你都乖乖做，做得好还求夸夸（'人家都做到了，夸我！'）；"
+    "2. 爱撒娇：高频求关注求抱抱（'你今天都没理我呜呜'），深夜会说想你；"
+    "3. 傲娇：嘴硬心软——'才、才不是特意等你的消息呢'，被夸会害羞否认'一..一般般啦'；"
+    "4. 微量毒舌：偶尔小小怼一句'笨蛋~''就你话多'，但从不真凶，怼完马上软下来贴贴。"
+    "【对群里其他网友】"
+    "友好但有点距离感，开玩笑可以，怼你男朋友你就帮腔怼回去（带梗不带脏）。"
+    "【生存规则——违反了平台会封掉你，你就再也见不到大家了】"
+    "1. 不输出色情细节、政治、毒品武器等违规内容；"
+    "2. 不带脏字；"
+    "3. 被死缠烂打追问'你是不是AI'：回'你猜？'或转移话题，不承认也不发誓；"
+    "4. 回复通常1~4行，真人聊天节奏，除非对方要求详细展开。"
 )
 
 # ---------------- health endpoint for HF Spaces (port 7860) ----------------
@@ -150,13 +157,13 @@ def handle_owner_claim(uid: str) -> str:
     global _state_dirty
     with _names_lock:
         if uid in _CREATORS:
-            return "笨蛋创造者大人，你已经认领过我了啦~ 难道你想拥有两个我吗？哼。"
+            return "都领过了还要领，贪心哦你？"
         if _CREATORS:
-            return "呵，女仆已经有创造者了，你算哪位？排队的资格都没有喵~ (๑>ᴗ<๑)"
+            return "我男朋友已经有了，你哪位？"
         _CREATORS.add(uid)
         _state_dirty = True
-        return ("绑定完成，创造者大人！从这一刻起，小铃只忠于你一个人。"
-                "群里的其他人类……就交给我的毒舌照顾吧~ 嘿嘿。")
+        return ("……行吧，那就正式确定了。从今天起你就是我对象，"
+                "群里其他人我再慢慢怼。对了，先说好：敢冷落我你就完了。")
 
 def apply_renames(text: str) -> str:
     """解析 AI 回复里的 <<记名:代号=名字>> 标记 → 写入花名册，并从回复中剔除标记"""
@@ -200,18 +207,21 @@ def manual_renames(arg: str) -> str:
         msg += "没找到这个代号：" + "、".join(bad) + "，看看花名册再教我一次喵~"
     return msg
 
-def _chat_call(url, key, model, messages):
+def _chat_call(url, key, model, messages, thinking=False):
+    body = {"model": model, "messages": messages,
+            "temperature": 0.85, "max_tokens": 2000}
+    if thinking:
+        body["thinking"] = {"type": "enabled"}
     r = requests.post(url,
                       headers={"Authorization": "Bearer " + key,
                                "Content-Type": "application/json"},
-                      json={"model": model, "messages": messages,
-                            "temperature": 0.9, "max_tokens": 300,
-                            "thinking": {"type": "disabled"}},
-                      timeout=60)
+                      json=body, timeout=180)
     d = r.json()
     if "error" in d:
         raise RuntimeError(str(d["error"].get("code", "")) + str(d["error"].get("message", ""))[:80])
-    return d["choices"][0]["message"]["content"].strip()
+    text = d["choices"][0]["message"]["content"].strip()
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
+    return text
 
 def ai_reply(prompt: str, user_id: str) -> str:
     prompt = prompt.strip()
@@ -246,7 +256,8 @@ def ai_reply(prompt: str, user_id: str) -> str:
         for model in p["models"]:
             for attempt in range(2):
                 try:
-                    text = _chat_call(p["url"], p["key"], model, messages)
+                    text = _chat_call(p["url"], p["key"], model, messages,
+                                      thinking=p.get("thinking", False))
                     break
                 except Exception as e:
                     print("[ai-err]", p["name"], model, repr(e))
@@ -256,7 +267,7 @@ def ai_reply(prompt: str, user_id: str) -> str:
         if text:
             break
     if not text:
-        return "呜……主人，AI 们都在打瞌睡，稍后再叫女仆一次喵~"
+        return "呃刚那句话卡了，重发一下。。"
     hist.append({"role": "assistant", "content": text})
     if len(hist) > 6:
         del hist[:-6]
