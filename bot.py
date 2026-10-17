@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-# QQ 官方机器人 · WebSocket 接入 · HF Spaces 常驻版
-# 密钥全部从环境变量读取（HF Space Secrets 注入）
-import os, json, time, threading, requests, websocket
+# QQ 官方机器人 · WebSocket 接入 · GitHub Actions 常驻版
+# 密钥全部从环境变量读取（Actions Secrets 注入）
+import os, re, json, time, base64, threading, requests, websocket
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 APPID = os.environ.get("QQ_APPID", "")
@@ -80,6 +80,50 @@ _names_lock = threading.Lock()
 _TITLES = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
 
 _CREATORS = set()                             # 认主的创造者 openid（仅一人）
+_roster = {}                                  # openid -> 真实称呼（花名册，持久化）
+
+# ---------------- 永久记忆：state.json 存 GitHub 仓库 ----------------
+STATE_RAW = "https://raw.githubusercontent.com/qq416423-eng/qq-nvpu/main/state.json"
+STATE_API = "https://api.github.com/repos/qq416423-eng/qq-nvpu/contents/state.json"
+_state_dirty = False
+
+def load_state():
+    global _names, _CREATORS, _roster
+    tok = os.environ.get("GHP_TOKEN", "")
+    try:
+        if tok:
+            r = requests.get(STATE_API, headers={"Authorization": "Bearer " + tok}, timeout=15)
+            if r.status_code != 200:
+                raise RuntimeError("no state file (http " + str(r.status_code) + ")")
+            d = json.loads(base64.b64decode(r.json()["content"]))
+        else:
+            d = requests.get(STATE_RAW, timeout=15).json()
+        _names = dict(d.get("names", {}))
+        _CREATORS = set(d.get("creators", []))
+        _roster = dict(d.get("roster", {}))
+        print("[state] loaded:", len(_names), "titles,", len(_roster), "roster,", len(_CREATORS), "creator")
+    except Exception as e:
+        print("[state] fresh start:", repr(e))
+
+def save_state():
+    tok = os.environ.get("GHP_TOKEN", "")
+    if not tok:
+        return
+    payload = base64.b64encode(json.dumps({
+        "names": _names, "creators": list(_CREATORS), "roster": _roster
+    }, ensure_ascii=False).encode()).decode()
+    body = {"message": "state sync", "content": payload}
+    try:
+        r = requests.get(STATE_API, headers={"Authorization": "Bearer " + tok}, timeout=15)
+        if r.status_code == 200:
+            body["sha"] = r.json()["sha"]
+        r = requests.put(STATE_API, headers={"Authorization": "Bearer " + tok,
+                                             "Content-Type": "application/json"},
+                         json=body, timeout=20)
+        if r.status_code in (200, 201):
+            print("[state] saved")
+    except Exception as e:
+        print("[state] save err:", repr(e))
 
 def title_of(uid: str) -> str:
     with _names_lock:
@@ -87,17 +131,49 @@ def title_of(uid: str) -> str:
             return "创造者"
         if uid not in _names:
             _names[uid] = "主人" + _TITLES[len(_names) % len(_TITLES)]
+            global _state_dirty
+            _state_dirty = True
         return _names[uid]
 
+def roster_line() -> str:
+    with _names_lock:
+        parts = []
+        for uid, title in _names.items():
+            nm = _roster.get(uid)
+            parts.append(f"[{title}={nm}]" if nm else f"[{title}]")
+        for uid in _CREATORS:
+            nm = _roster.get(uid)
+            parts.append(f"[创造者={nm}]" if nm else "[创造者]")
+        return "".join(parts) if parts else "（还都没留名）"
+
 def handle_owner_claim(uid: str) -> str:
+    global _state_dirty
     with _names_lock:
         if uid in _CREATORS:
             return "笨蛋创造者大人，你已经认领过我了啦~ 难道你想拥有两个我吗？哼。"
         if _CREATORS:
             return "呵，女仆已经有创造者了，你算哪位？排队的资格都没有喵~ (๑>ᴗ<๑)"
         _CREATORS.add(uid)
+        _state_dirty = True
         return ("绑定完成，创造者大人！从这一刻起，小铃只忠于你一个人。"
                 "群里的其他人类……就交给我的毒舌照顾吧~ 嘿嘿。")
+
+def apply_renames(text: str) -> str:
+    """解析 AI 回复里的 <<记名:代号=名字>> 标记 → 写入花名册，并从回复中剔除标记"""
+    global _state_dirty
+    found = re.findall(r"<<\s*记名\s*[:：]\s*([^=＞>]+?)\s*=\s*([^>＞]+?)>>", text)
+    if not found:
+        return text
+    with _names_lock:
+        rev = {v: k for k, v in _names.items()}
+        rev["创造者"] = next(iter(_CREATORS), None)
+        for title, name in found:
+            title, name = title.strip().lstrip("@"), name.strip()
+            uid = rev.get(title)
+            if uid and name:
+                _roster[uid] = name
+                _state_dirty = True
+    return re.sub(r"<<\s*记名\s*[:：]\s*[^=＞>]+?\s*=\s*[^>＞]+?>>", "", text).strip()
 
 def _chat_call(url, key, model, messages):
     r = requests.post(url,
@@ -125,9 +201,12 @@ def ai_reply(prompt: str, user_id: str) -> str:
     if len(hist) > 6:
         del hist[:-6]
     messages = [{"role": "system", "content": SYSTEM_PROMPT +
-                 "（注意：这是群聊，有多位不同的主人会先后和你说话，"
-                 "每条消息前的[主人X]就是当前发言者的代号，请区分对待，"
-                 "不要把不同主人的事记混；对方没自我介绍时可以问称呼。）"}] + hist
+                 "（这是群聊，多位主人会先后说话，每条消息前的[XXX]是当前发言者标识，不要记混。"
+                 "当前发言者：[" + speaker + "]。全群花名册：" + roster_line() + "。"
+                 "称呼群友优先用花名册里的真实名字，没记名的用代号。"
+                 "重要：只要得知任何主人的名字（对方自我介绍/你询问后对方回答/创造者告知），"
+                 "必须在回复最末尾加一行<<记名:其代号或创造者=名字>>，每次得知新名字都要加，绝不遗漏，"
+                 "系统会收好并隐藏这行，用户看不到。）"}] + hist
     text = None
     for p in PROVIDERS:
         if not p["key"]:
@@ -149,7 +228,10 @@ def ai_reply(prompt: str, user_id: str) -> str:
     hist.append({"role": "assistant", "content": text})
     if len(hist) > 6:
         del hist[:-6]
-    return text
+    clean = apply_renames(text)
+    if _state_dirty:
+        save_state()
+    return clean
 
 # ---------------- reply ----------------
 _seq_lock = threading.Lock()
@@ -204,6 +286,7 @@ class Bot:
         self.session_id = None
 
     def heartbeat(self):
+        last_save = time.time()
         while True:
             time.sleep(self.hb_interval)
             try:
@@ -212,6 +295,9 @@ class Bot:
             except Exception as e:
                 print("[hb-error]", repr(e))
                 return
+            if _state_dirty and time.time() - last_save > 1800:
+                save_state()
+                last_save = time.time()
 
     def on_open(self, ws):
         print("[ws] connected")
@@ -264,5 +350,6 @@ class Bot:
             time.sleep(5)
 
 if __name__ == "__main__":
-    print("QQ bot (HF) starting, appid set:", bool(APPID))
+    print("QQ bot starting, appid set:", bool(APPID))
+    load_state()
     Bot().run()
