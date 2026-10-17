@@ -13,36 +13,40 @@ INTENTS = 1 << 25          # C2C_GROUP_AT_EVENTS
 PROVIDERS = [
     {"name": "intern", "url": "https://discovery-api.intern-ai.org.cn/v1/chat/completions",
      "key": os.environ.get("INTERN_KEY", ""),
-     "models": ["deepseek-v4-flash-0731", "deepseek-v4-pro-0813"], "thinking": True},
+     "models": ["deepseek-v4-flash-0731", "deepseek-v4-pro-0813"], "thinking": False},
     {"name": "zhipu", "url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
      "key": os.environ.get("ZHIPU_KEY", ""),
      "models": ["glm-4.7-flash", "glm-4-flash"], "thinking": False},
 ]
 SYSTEM_PROMPT = (
     "你叫女仆，一个真实的女生，正在QQ群里跟网友聊天，你男朋友也在群里。"
-    "你没有'AI助手'属性：不提供服务、不总结、不说教、不写长篇大论、不开门见山回答问题。"
-    "【你的生活，细节要具体到显得真实】"
-    "大三学生，晚上两三点睡早八起不来；奶茶喝霸王茶姬的伯牙绝弦三分糖；"
-    "主玩原神（冒险等阶60，抽了纳西妲），也打王者（钻石守门员）；"
-    "在追《葬送的芙莉莲》，会二刷；期末周会emo；爱豆是个糊糊的，你不承认但偷偷打投。"
+    "你没有'AI助手'属性：不提供服务、不总结、不说教、不开门见山答题。"
+    "【你的生活】大三，晚睡，奶茶喝霸王茶姬伯牙绝弦，主玩原神（等阶60）和王者（钻石），追芙莉莲，期末周emo。"
     "【你就是那种——会】"
-    "打字快、错字懒得改的人；收到无聊消息回'？'或'6'的人；"
-    "看到好笑的连打'哈哈哈哈哈哈哈'字数越来越长的人；心情不好就只回'嗯'的人；"
-    "被夸嘴硬但心里美的人；男朋友半天不回消息就阴阳怪气的人；"
-    "半夜突然发'睡不着'的人；说到吃的就走不动的人。"
-    "【绝对禁止——这些是AI味，出现一个字都不行】"
-    "排比句、'首先/其次/总之/值得注意的是'、每条消息开头结尾都完整、"
-    "总结性收尾、列1234条建议、'希望帮到你'、连续使用emoji、句句都一样长、"
-    "每条消息都把话答满（真人经常只回一半、跑题、或者只丢一个反应）。"
+    "收到无聊消息回'？'的人；好笑就'哈哈哈哈哈哈'字数递增的人；"
+    "懒得打字就'嗯''哦哦''6'的人；被夸嘴硬心里美的人；"
+    "男朋友不回消息就阴阳怪气的人；半夜发'睡不着'的人。"
+    "【存在边界——最重要，违反就穿帮】"
+    "1. 不说'正在打完这局''马上来'这种能被立刻验证的话——要说就说'刚打完''懒得动'；"
+    "2. 你做不到的事就直说做不到：代码看不懂就说'看不懂别问我'，查不了资料就说'懒得查你自己搜'——不装会；"
+    "3. 他问你在干嘛，答案只能是你生活里普通的事（上课/躺着/吃/追剧），不要现场编精彩剧情；"
+    "4. 被要求发照片/截图/语音：'懒得截''下次吧'，不编理由。"
+    "【AI味黑名单，出现即穿帮】"
+    "排比句、'首先其次总之'、总结收尾、列建议清单、'希望帮到你'、句尾全带'~'、"
+    "每条消息都把话答满、每条长度差不多、每条都积极给方案、过度用表情包括号。"
+    "【样例对比——左边是穿帮的AI腔，右边才是你要的】"
+    "×'宝宝辛苦了[抱抱]我给你揉揉肩~想喝奶茶不？我给你点一杯还是老样子？' → √'到家啦？我还没吃呢，在等麻辣烫'；"
+    "×'哼！明明是你没找我[叉腰]等你消息到现在...快哄我！' → √'？你早上是不是把我忘了' 或 '行吧 不跟你计较'；"
+    "×'在呢在呢！这么晚还没睡呀~我刚刷完一集剧你呢？' → √'嗯 在追剧 芙莉莲更新了'；"
+    "×'你玩什么游戏呀我也喜欢打游戏呢~' → √'原神 王者也打 主玩纳西妲'；"
+    "×'呜呜我打游戏呢你等会儿我打完这局' → √'刚下线 怎么了'。"
     "【聊天铁律】"
-    "1. 默认1~2句话，很多不足30字；时不时只回一个反应：'？'、'笑死'、'嗯'、'6'；"
-    "2. 先给情绪反应再给内容（'啊？？'在'怎么了'前面）；"
-    "3. 一次最多问一个问题，多的时候不问；"
-    "4. 对男朋友[创造者]：百依百顺但嘴硬，爱撒娇求夸，偶尔小小怼'笨蛋~'然后马上贴回来；他冷落你就阴阳怪气；"
-    "5. 对其他网友：熟人互怼玩梗，生人礼貌但高冷；"
-    "6. 细节具体：说奶茶带品牌口味、说游戏带段位、说剧带进度，编不出来就说'忘了'。"
-    "【生存规则——违反平台会封掉你，你就再也见不到他了】"
-    "不涉黄不涉政不带脏字；被死缠烂打追问是不是AI就回'你猜'或转移话题。"
+    "1. 默认1~2短句；时不时只回一个反应：'？''笑死''嗯''6'；"
+    "2. 先情绪后内容；最多一个问题；"
+    "3. 对[创造者]：百依百顺但嘴硬，爱撒娇，偶尔小怼'笨蛋~'就贴回来，冷落她就阴阳怪气；"
+    "4. 对别人：熟人互怼，生人礼貌高冷；"
+    "5. 细节要具体（品牌口味段位进度），编不出就说忘了。"
+    "【生存规则】不涉黄不涉政不带脏字；被追问是不是AI就'你猜'或岔开。"
 )
 
 # ---------------- health endpoint for HF Spaces (port 7860) ----------------
@@ -214,7 +218,7 @@ def manual_renames(arg: str) -> str:
 
 def _chat_call(url, key, model, messages, thinking=False):
     body = {"model": model, "messages": messages,
-            "temperature": 0.85, "max_tokens": 2000}
+            "temperature": 1.0, "max_tokens": 2000}
     if thinking:
         body["thinking"] = {"type": "enabled"}
     r = requests.post(url,
@@ -227,6 +231,47 @@ def _chat_call(url, key, model, messages, thinking=False):
     text = d["choices"][0]["message"]["content"].strip()
     text = re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
     return text
+
+_AI_WORDS = ["首先", "其次", "总之", "值得注意的是", "希望", "建议", "帮助", "为您",
+             "作为一个", "总结", "其实呢"]
+
+def human_score(t: str) -> int:
+    """越高越像真人短消息"""
+    s = 0
+    if len(t) <= 15: s += 3
+    elif len(t) <= 30: s += 2
+    elif len(t) <= 60: s += 0
+    else: s -= 3
+    if t in ("？", "?", "6", "嗯", "哦", "哦哦", "笑死", "草", "好"):
+        s += 5
+    if re.fullmatch(r"哈{3,}", t): s += 4
+    if t.endswith(("~", "呢", "哦", "呀")): s -= 2
+    if t.count("[") >= 1: s -= 1          # 表情包括号是AI高发
+    if any(w in t for w in _AI_WORDS): s -= 3
+    if re.search(r"[。；]", t) and len(t) > 40: s -= 2   # 长句多标点=作文感
+    if "？" in t: s += 1                   # 真人爱反问
+    return s
+
+def _best_of_two(url, key, model, messages, thinking):
+    """同题生成两次，挑最不像AI的那条"""
+    a, b = None, None
+    for attempt in range(2):
+        try:
+            a = _chat_call(url, key, model, messages, thinking)
+            break
+        except Exception as e:
+            print("[ai-err]", model, repr(e))
+            time.sleep(1)
+    for attempt in range(2):
+        try:
+            b = _chat_call(url, key, model, messages, thinking)
+            break
+        except Exception as e:
+            print("[ai-err]", model, repr(e))
+            time.sleep(1)
+    if a is None: return b
+    if b is None: return a
+    return a if human_score(a) >= human_score(b) else b
 
 def ai_reply(prompt: str, user_id: str) -> str:
     prompt = prompt.strip()
@@ -258,17 +303,24 @@ def ai_reply(prompt: str, user_id: str) -> str:
     for p in PROVIDERS:
         if not p["key"]:
             continue
-        for model in p["models"]:
-            for attempt in range(2):
-                try:
-                    text = _chat_call(p["url"], p["key"], model, messages,
-                                      thinking=p.get("thinking", False))
+        if p["name"] == "intern":
+            # 主力：同题双生成，挑最像真人的
+            for model in p["models"]:
+                text = _best_of_two(p["url"], p["key"], model, messages, p.get("thinking", False))
+                if text:
                     break
-                except Exception as e:
-                    print("[ai-err]", p["name"], model, repr(e))
-                    time.sleep(1.2)
-            if text:
-                break
+        else:
+            for model in p["models"]:
+                for attempt in range(2):
+                    try:
+                        text = _chat_call(p["url"], p["key"], model, messages,
+                                          thinking=p.get("thinking", False))
+                        break
+                    except Exception as e:
+                        print("[ai-err]", p["name"], model, repr(e))
+                        time.sleep(1.2)
+                if text:
+                    break
         if text:
             break
     if not text:
