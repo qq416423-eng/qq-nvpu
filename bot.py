@@ -13,7 +13,7 @@ INTENTS = 1 << 25          # C2C_GROUP_AT_EVENTS
 PROVIDERS = [
     {"name": "intern", "url": "https://discovery-api.intern-ai.org.cn/v1/chat/completions",
      "key": os.environ.get("INTERN_KEY", ""),
-     "models": ["deepseek-v4-flash-0731", "deepseek-v4-pro-0813"], "thinking": False},
+     "models": ["minimax-m3", "deepseek-v4-flash-0731"], "thinking": False},
     {"name": "zhipu", "url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
      "key": os.environ.get("ZHIPU_KEY", ""),
      "models": ["glm-4.7-flash", "glm-4-flash"], "thinking": False},
