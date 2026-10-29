@@ -363,16 +363,31 @@ def send_group_multi(group: str, reply: str, msg_id: str):
         time.sleep(delay)
         send_group(group, part[:900], msg_id)
 
+GROUP_KEYWORDS = ["女仆", "喵喵"]   # 全量消息触发词：群友不@直接喊这些词也会回（可自行增删）
+
 def handle_event(t: str, d: dict):
     try:
-        if t == "GROUP_AT_MESSAGE_CREATE":
+        if t in ("GROUP_AT_MESSAGE_CREATE", "GROUP_MESSAGE_CREATE"):
             content = d.get("content", "").strip()
             group = d.get("group_openid", "")
             author = d.get("author", {}) or {}
             uid = author.get("id") or author.get("union_openid") or group + ":anon"
             mid = d.get("id", "")
-            print(f"[recv-group] uid={uid[:12]} {content!r}")
-            reply = ai_reply(content, uid)
+            is_at = ("<@!" in content) or ("<@" in content)
+            clean = re.sub(r"<@!\d+>|<@\d+>", "", content).strip()
+            print(f"[recv-group] t={t} uid={uid[:12]} at={is_at} id={bool(mid)} {clean[:60]!r}")
+            if t == "GROUP_AT_MESSAGE_CREATE" and not clean:
+                return  # @事件但内容为空（全量模式的过渡格式），忽略
+            if t == "GROUP_MESSAGE_CREATE":
+                # 全量消息：只回复 被@ 或 命中关键词 的，其他群友闲聊静默
+                if not is_at and not any(k in clean for k in GROUP_KEYWORDS):
+                    return
+                if not mid:
+                    print("[skip] no msg_id, cannot passive reply:", json.dumps(d, ensure_ascii=False)[:200])
+                    return
+            if not clean:
+                clean = "在吗"
+            reply = ai_reply(clean, uid)
             send_group_multi(group, reply, mid)
         elif t == "C2C_MESSAGE_CREATE":
             content = d.get("content", "").strip()
